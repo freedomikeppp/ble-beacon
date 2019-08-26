@@ -10,12 +10,12 @@ else:
 
 # --------------- get bluetoothe devices ---------------
 uuid_list = [
-    '0FEC7C6F-F05D-49AF-956A-CA08B413839F', # Red
-    'ac:23:3f:26:45:15', 
-    '8F16E228-2BA6-4440-8CC4-6BD300EB5FB3', # Yellow
-    'ac:23:3f:26:40:48',
-    'FE1F23B9-6794-437E-B8C9-7A9D31616636', # Blue
-    'ac:23:3f:26:40:5b'
+    '0FEC7C6F-F05D-49AF-956A-CA08B413839F', # RED
+    'AC:23:3F:26:45:15', 
+    '8F16E228-2BA6-4440-8CC4-6BD300EB5FB3', # YELLOW
+    'AC:23:3F:26:40:48',
+    'FE1F23B9-6794-437E-B8C9-7A9D31616636', # BLUE
+    'AC:23:3F:26:40:5B'
 ]
 async def run():
     while True:
