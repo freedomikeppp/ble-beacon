@@ -53,8 +53,10 @@ async def run_getting_packets(master=None):
 
     取得対象は、macOSの場合は'UUID'を、Windows10の場合は'MAC Address'で判定する。
     '''
+    count = 0
     while True:
         devices = await discover()
+        count += 1
         for d in devices:
             color = Beacon.find(str(d).rsplit(':', 1)[0])
             if color is not None:
@@ -65,13 +67,12 @@ async def run_getting_packets(master=None):
                 print('name:', d.name)
                 print('rssi:', d.rssi)
                 if color == 'RED':
-                    master.text1.insert(1.0, 'rssi: '+ str(d.rssi) + '\n')
+                    master.text1.insert(1.0, 'seq: ' + str(count) + ', rssi: '+ str(d.rssi) + '\n')
                 elif color == 'BLUE':
-                    master.text2.insert(1.0, 'rssi: '+ str(d.rssi) + '\n')
+                    master.text2.insert(1.0, 'seq: ' + str(count) + ', rssi: '+ str(d.rssi) + '\n')
                 elif color == 'YELLOW':
-                    master.text3.insert(1.0, 'rssi: '+ str(d.rssi) + '\n')
+                    master.text3.insert(1.0, 'seq: ' + str(count) + ', rssi: '+ str(d.rssi) + '\n')
         print('-----------------------------')
-        await asyncio.sleep(0.3)
 
 class MainFrame(tk.Frame):
 
