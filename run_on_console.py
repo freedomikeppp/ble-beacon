@@ -8,6 +8,7 @@ import threading
 import tkinter as tk
 import tkinter.messagebox as tkm
 
+
 # macOS
 if platform.system() == "Darwin":
     from bleak import discover
@@ -15,111 +16,146 @@ if platform.system() == "Darwin":
 else:
     from bleak.backends.dotnet.discovery import discover
 
-class RssiManager():
 
-    data = {
-        'RED': [],
-        'BLUE': [],
-        'YELLOW': [],
-        'GREEN': [],
-        'PURPLE': [],
-        'WHITE': []
-    }
+class BeaconManager():
+    '''ビーコンのUUID・MAC Address・RSSI値を管理するクラス。
 
-    def insert_rssi(self, color, rssi):
-        past_list = self.data.get(color)
-        if(len(past_list) <= 10):
-            past_list.append(int(rssi))
-        else:
-            past_list.append(int(rssi))
-            past_list.pop(0)
-
-    def get_average(self, color):
-        past_list = self.data.get(color)
-        total = 0
-        for v in past_list:
-            total += v
-        return total / len(past_list)
-
-class Beacon():
-
-    # UUID is for macOS
-    uuid_dic = {
-        '0FEC7C6F-F05D-49AF-956A-CA08B413839F': 'RED',
-        'FE1F23B9-6794-437E-B8C9-7A9D31616636': 'BLUE',
-        '8F16E228-2BA6-4440-8CC4-6BD300EB5FB3': 'YELLOW',
-        '': 'GREEN',
-        '': 'PURPLE',
-        '': 'WHITE'
-    }
-    # MAC Adress is for Windows10
-    mac_dic = {
-        'AC:23:3F:26:45:15': 'RED',
-        'AC:23:3F:26:40:5B': 'BLUE',
-        'AC:23:3F:26:40:48': 'YELLOW',
-        '': 'GREEN',
-        '': 'PURPLE',
-        '': 'WHITE'
+    キーとなる文字列は、色（color）で管理する。
+    '''
+    beacons = {
+        'RED': {
+            'uuid': '0FEC7C6F-F05D-49AF-956A-CA08B413839F', # UUID is for macOS
+            'mac_address': 'AC:23:3F:26:45:15', # MAC Adress is for Windows10
+            'rssi_data': []
+        },
+        'BLUE': {
+            'uuid': 'FE1F23B9-6794-437E-B8C9-7A9D31616636',
+            'mac_address': 'AC:23:3F:26:40:5B',
+            'rssi_data': []
+        },
+        'YELLOW': {
+            'uuid': '8F16E228-2BA6-4440-8CC4-6BD300EB5FB3',
+            'mac_address': 'AC:23:3F:26:40:48',
+            'rssi_data': []
+        }
     }
 
     @classmethod
-    def find(cls, key):
+    def find(cls, unique_id):
+        '''UUID、またはMAC Addressから、ビーコン色を取得する。
+
+        取得対象は、macOSの場合は'UUID'を、Windows10の場合は'MAC Address'で判定する。
+        '''
         if platform.system() == "Darwin":
-            return cls.uuid_dic.get(key) if key in cls.uuid_dic.keys() else None
+            for key_color in cls.beacons.keys():
+                if unique_id in cls.beacons.get(key_color).get('uuid'):
+                    return key_color
         else:
-            return cls.mac_dic.get(key) if key in cls.mac_dic.keys() else None
+            for key_color in cls.beacons.keys():
+                if unique_id in cls.beacons.get(key_color).get('mac_address'):
+                    return key_color
+        return None
+
+    @classmethod
+    def insert_rssi(cls, key_color, rssi):
+        '''指定した色のRSSI値を登録し、最新の10件まで保存する。
+        
+        Args:
+            key_color (str): 色
+            rssi (int): RSSI値（電波の強さ）
+        '''
+        rssi_list = cls.beacons.get(key_color).get('rssi_data')
+        if(len(rssi_list) <= 10):
+            rssi_list.append(int(rssi))
+        else:
+            rssi_list.append(int(rssi))
+            rssi_list.pop(0)
+
+    @classmethod
+    def get_average(cls, key_color):
+        '''指定した色のRSSIの平均値を取得する。存在しない場合はNoneが返る。
+        
+        Args:
+            key_color (str): 色
+        Return:
+            int: RSSI平均値。但し、存在しない場合は、None。
+        '''
+        rssi_list = cls.beacons.get(key_color).get('rssi_data')
+        total = 0
+        if len(rssi_list) > 0:
+            for v in rssi_list:
+                total += v
+            return round(total / len(rssi_list), 2)
+        else:
+            return None
+
+    @classmethod
+    def get_nearest_beacon(cls):
+        '''管理しているRSSI平均値の中で、一番大きな平均値値を持つ(一番距離が近い)ビーコン情報を返す。
+        
+        Return:
+            dict: exp) {'key_color': 'RED', 'average_rssi': -48.3}
+        '''
+        beacon_dict = {}
+        for key_color in cls.beacons.keys():
+            average_rssi = cls.get_average(key_color)
+            if len(beacon_dict) == 0 or (average_rssi is not None and beacon_dict.get('average_rssi') < average_rssi):
+                beacon_dict = {
+                    'key_color': key_color,
+                    'average_rssi': average_rssi
+                }
+        return beacon_dict
 
     
-
 def do_task(async_loop, master=None):
-    '''非同期タスクの実行
-
-    Args:
-        async_loop (asyncio): asyncイベントループ
-    '''
-    threading.Thread(target=_asyncio_thread, args=(async_loop, master)).start()
+    '''非同期でビーコンを受信するタスクを開始する。'''
+    if master.is_do_task == False:
+        master.is_do_task = True
+        threading.Thread(target=_asyncio_thread, args=(async_loop, master)).start()
+    else:
+        pass
 
 def _asyncio_thread(async_loop, master):
     async_loop.run_until_complete(run_getting_packets(master))
 
 async def run_getting_packets(master=None):
-    '''Bluetoothモジュールを使いアドバタイズパケットを取得する。
-
-    取得対象は、macOSの場合は'UUID'を、Windows10の場合は'MAC Address'で判定する。
-    '''
-    rssi_manager = RssiManager()
+    '''Bluetoothモジュールを使いアドバタイズパケットを取得する'''
     count = 0
     while True:
         devices = await discover()
         count += 1
         for d in devices:
-            color = Beacon.find(str(d).rsplit(':', 1)[0])
-            if color is not None:
-                print('UUID:', d)
-                print('address:', d.address)
-                print('details:', d.details)
-                print('metadata:', d.metadata)
-                print('name:', d.name)
-                print('rssi:', d.rssi)
-                if color == 'RED':
-                    rssi_manager.insert_rssi('RED', d.rssi)
+            key_color = BeaconManager.find(str(d).rsplit(':', 1)[0])
+            if key_color is not None:
+                # print('UUID:', d)
+                # print('address:', d.address)
+                # print('details:', d.details)
+                # print('metadata:', d.metadata)
+                # print('name:', d.name)
+                # print('rssi:', d.rssi)
+                if key_color == 'RED':
+                    BeaconManager.insert_rssi('RED', d.rssi)
                     master.text1.insert(
                         1.0,
-                        'seq: ' + str(count) + ', rssi: ' + str(d.rssi) + 'dBm, average: ' + str(rssi_manager.get_average('RED')) + 'dBm\n'
+                        'seq: ' + str(count) + ', rssi: ' + str(d.rssi) + 'dBm, average: ' + str(BeaconManager.get_average('RED')) + 'dBm\n'
                     )
-                elif color == 'BLUE':
-                    rssi_manager.insert_rssi('BLUE', d.rssi)
+                elif key_color == 'BLUE':
+                    BeaconManager.insert_rssi('BLUE', d.rssi)
                     master.text2.insert(
                         1.0,
-                        'seq: ' + str(count) + ', rssi: ' + str(d.rssi) + 'dBm, average: ' + str(rssi_manager.get_average('BLUE')) + 'dBm\n'
+                        'seq: ' + str(count) + ', rssi: ' + str(d.rssi) + 'dBm, average: ' + str(BeaconManager.get_average('BLUE')) + 'dBm\n'
                     )
-                elif color == 'YELLOW':
-                    rssi_manager.insert_rssi('YELLOW', d.rssi)
+                elif key_color == 'YELLOW':
+                    BeaconManager.insert_rssi('YELLOW', d.rssi)
                     master.text3.insert(
                         1.0,
-                        'seq: ' + str(count) + ', rssi: ' + str(d.rssi) + 'dBm, average: ' + str(rssi_manager.get_average('YELLOW')) + 'dBm\n'
+                        'seq: ' + str(count) + ', rssi: ' + str(d.rssi) + 'dBm, average: ' + str(BeaconManager.get_average('YELLOW')) + 'dBm\n'
                     )
-        print('-----------------------------')
+        beacon_dic = BeaconManager.get_nearest_beacon()
+        master.nearest_beacon_stringvar.set('The nearest beacon is the color of ' + beacon_dic.get('key_color') + ' (rssi: ' + str(beacon_dic.get('average_rssi')) + ')')
+        master.nearest_beacon['fg'] = beacon_dic.get('key_color').lower()
+        await asyncio.sleep(0.2)
+
 
 class MainFrame(tk.Frame):
 
@@ -131,6 +167,7 @@ class MainFrame(tk.Frame):
         self.master['padx'] = 5
         self.master['pady'] = 5
         self.create_widgets()
+        self.is_do_task = False
 
         # Bug fixes for macOS
         self.master.update()
@@ -172,20 +209,26 @@ class MainFrame(tk.Frame):
         self.text5.grid(row=3, column=1)
         self.text5['pady'] = 5
 
-        self.label6 = tk.Label(text='Beacon WHITE', fg='gray')
+        self.label6 = tk.Label(text='Beacon GRAY', fg='gray')
         self.label6.grid(row=4, column=1)
         self.label6['pady'] = 5
         self.text6 = tk.Text(width=50, height=10)
         self.text6.grid(row=5, column=1)
         self.text6['pady'] = 5
+        
+        self.nearest_beacon_stringvar = tk.StringVar()
+        self.nearest_beacon_stringvar.set('The nearest beacon is nothing.')
+        self.nearest_beacon = tk.Label(textvariable=self.nearest_beacon_stringvar, fg='black')
+        self.nearest_beacon.grid(row=6, columnspan=2)
+        self.nearest_beacon['pady'] = 5
 
         self.get_btn = tk.Button(text='Get packets', fg='black', command= lambda:do_task(async_loop, self))
-        self.get_btn.grid(row=6)
+        self.get_btn.grid(row=7)
         self.get_btn['pady'] = 5
 
         self.reset_btn = tk.Button(text='Reset logs', fg='black')
         self.reset_btn.bind("<Button-1>", self.delete_text)
-        self.reset_btn.grid(row=6, column=1)
+        self.reset_btn.grid(row=7, column=1)
         self.reset_btn['pady'] = 5
 
     def fix(self):
