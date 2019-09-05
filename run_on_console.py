@@ -37,6 +37,21 @@ class BeaconManager():
             'uuid': '8F16E228-2BA6-4440-8CC4-6BD300EB5FB3',
             'mac_address': 'AC:23:3F:26:40:48',
             'rssi_data': []
+        },
+        'GREEN': {
+            'uuid': '63A5C056-D205-4248-97BA-1B23312B6392',
+            'mac_address': 'AC:23:3F:26:40:40',
+            'rssi_data': []
+        },
+        'PURPLE': {
+            'uuid': 'C085CB8E-5731-4BB4-B36B-839B2F590CD1',
+            'mac_address': 'AC:23:3F:26:45:C2',
+            'rssi_data': []
+        },
+        'GRAY': {
+            'uuid': 'CDF00AB3-6D0F-4B96-90CB-8BB1D4B43F99',
+            'mac_address': 'AC:23:3F:26:42:EB',
+            'rssi_data': []
         }
     }
 
@@ -72,6 +87,15 @@ class BeaconManager():
             rssi_list.pop(0)
 
     @classmethod
+    def reset_rssi(cls, key_color):
+        '''指定した色のRSSI値履歴をリセットする。
+        
+        Args:
+            key_color (str): 色
+        '''
+        cls.beacons.get(key_color)['rssi_data'] = []
+
+    @classmethod
     def get_average(cls, key_color):
         '''指定した色のRSSIの平均値を取得する。存在しない場合はNoneが返る。
         
@@ -99,7 +123,9 @@ class BeaconManager():
         beacon_dict = {}
         for key_color in cls.beacons.keys():
             average_rssi = cls.get_average(key_color)
-            if len(beacon_dict) == 0 or (average_rssi is not None and beacon_dict.get('average_rssi') < average_rssi):
+            if average_rssi is None:
+                continue
+            if len(beacon_dict) == 0 or beacon_dict.get('average_rssi') < average_rssi:
                 beacon_dict = {
                     'key_color': key_color,
                     'average_rssi': average_rssi
@@ -122,6 +148,7 @@ async def run_getting_packets(master=None):
     '''Bluetoothモジュールを使いアドバタイズパケットを取得する'''
     count = 0
     while True:
+        not_exists_color = ['RED', 'BLUE', 'YELLOW', 'GREEN', 'PURPLE', 'GRAY']
         devices = await discover()
         count += 1
         for d in devices:
@@ -151,9 +178,38 @@ async def run_getting_packets(master=None):
                         1.0,
                         'seq: ' + str(count) + ', rssi: ' + str(d.rssi) + 'dBm, average: ' + str(BeaconManager.get_average('YELLOW')) + 'dBm\n'
                     )
+                elif key_color == 'GREEN':
+                    BeaconManager.insert_rssi('GREEN', d.rssi)
+                    master.text4.insert(
+                        1.0,
+                        'seq: ' + str(count) + ', rssi: ' + str(d.rssi) + 'dBm, average: ' + str(BeaconManager.get_average('GREEN')) + 'dBm\n'
+                    )
+                elif key_color == 'PURPLE':
+                    BeaconManager.insert_rssi('PURPLE', d.rssi)
+                    master.text5.insert(
+                        1.0,
+                        'seq: ' + str(count) + ', rssi: ' + str(d.rssi) + 'dBm, average: ' + str(BeaconManager.get_average('PURPLE')) + 'dBm\n'
+                    )
+                elif key_color == 'GRAY':
+                    BeaconManager.insert_rssi('GRAY', d.rssi)
+                    master.text6.insert(
+                        1.0,
+                        'seq: ' + str(count) + ', rssi: ' + str(d.rssi) + 'dBm, average: ' + str(BeaconManager.get_average('GRAY')) + 'dBm\n'
+                    )    
+                not_exists_color.remove(key_color)
+
+        # ビーコンが近くに存在しなくなった時、履歴リストをリセットする
+        for key_color in not_exists_color:
+            BeaconManager.reset_rssi(key_color)
+
+        # 最も近いビーコン色を表示
         beacon_dic = BeaconManager.get_nearest_beacon()
-        master.nearest_beacon_stringvar.set('The nearest beacon is the color of ' + beacon_dic.get('key_color') + ' (rssi: ' + str(beacon_dic.get('average_rssi')) + ')')
-        master.nearest_beacon['fg'] = beacon_dic.get('key_color').lower()
+        if beacon_dic is not None and len(beacon_dic) > 0:
+            master.nearest_beacon_stringvar.set('The nearest beacon is the color of ' + beacon_dic.get('key_color') + ' (rssi: ' + str(beacon_dic.get('average_rssi')) + ')')
+            master.nearest_beacon['fg'] = beacon_dic.get('key_color').lower()
+        else:
+            master.nearest_beacon_stringvar.set('The nearest beacon is nothing.')
+            master.nearest_beacon['fg'] = 'black'
         await asyncio.sleep(0.2)
 
 
@@ -242,6 +298,9 @@ class MainFrame(tk.Frame):
         self.text1.delete(1.0, tk.END)
         self.text2.delete(1.0, tk.END)
         self.text3.delete(1.0, tk.END)
+        self.text4.delete(1.0, tk.END)
+        self.text5.delete(1.0, tk.END)
+        self.text6.delete(1.0, tk.END)
 
 
 def main(async_loop):
