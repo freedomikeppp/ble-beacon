@@ -27,36 +27,42 @@ class BeaconManager():
             'uuid': '0FEC7C6F-F05D-49AF-956A-CA08B413839F', # UUID is for macOS
             'mac_address': 'AC:23:3F:26:45:15', # MAC Adress is for Windows10
             'rssi_data': [],
+            'reset_count': 0,
             'fg_color': 'red'
         },
         'BLUE': {
             'uuid': 'FE1F23B9-6794-437E-B8C9-7A9D31616636',
             'mac_address': 'AC:23:3F:26:40:5B',
             'rssi_data': [],
+            'reset_count': 0,
             'fg_color': 'blue'
         },
         'YELLOW': {
             'uuid': '8F16E228-2BA6-4440-8CC4-6BD300EB5FB3',
             'mac_address': 'AC:23:3F:26:40:48',
             'rssi_data': [],
+            'reset_count': 0,
             'fg_color': 'gold'
         },
         'GREEN': {
             'uuid': '63A5C056-D205-4248-97BA-1B23312B6392',
             'mac_address': 'AC:23:3F:26:40:40',
             'rssi_data': [],
+            'reset_count': 0,
             'fg_color': 'green'
         },
         'PURPLE': {
             'uuid': 'C085CB8E-5731-4BB4-B36B-839B2F590CD1',
             'mac_address': 'AC:23:3F:26:45:C2',
             'rssi_data': [],
+            'reset_count': 0,
             'fg_color': 'purple'
         },
         'WHITE': {
             'uuid': 'CDF00AB3-6D0F-4B96-90CB-8BB1D4B43F99',
             'mac_address': 'AC:23:3F:26:42:EB',
             'rssi_data': [],
+            'reset_count': 0,
             'fg_color': 'gray'
         }
     }
@@ -79,18 +85,30 @@ class BeaconManager():
 
     @classmethod
     def insert_rssi(cls, key_color, rssi):
-        '''指定した色のRSSI値を登録し、最新の10件まで保存する。
+        '''指定した色のRSSI値を登録し、最新の5件まで保存する。
         
         Args:
             key_color (str): 色
             rssi (int): RSSI値（電波の強さ）
         '''
         rssi_list = cls.beacons.get(key_color).get('rssi_data')
-        if(len(rssi_list) <= 10):
+        if(len(rssi_list) <= 4):
             rssi_list.append(int(rssi))
         else:
             rssi_list.append(int(rssi))
             rssi_list.pop(0)
+        cls.beacons.get(key_color)['reset_count'] = 0 # リセットカウントを0に
+
+    @classmethod
+    def increment_reset_count(cls, key_color):
+        '''指定した色のリセットカウントをインクリメントし、規定数を超えればRSSIをリセット。
+        
+        Args:
+            key_color (str): 色
+        '''
+        cls.beacons.get(key_color)['reset_count'] += 1
+        if cls.beacons.get(key_color).get('reset_count') > 3 and cls.beacons.get(key_color)['rssi_data'] != []:
+            cls.reset_rssi(key_color)
 
     @classmethod
     def reset_rssi(cls, key_color):
@@ -112,7 +130,7 @@ class BeaconManager():
         '''
         rssi_list = cls.beacons.get(key_color).get('rssi_data')
         total = 0
-        if len(rssi_list) > 0:
+        if len(rssi_list) > 3:
             for v in rssi_list:
                 total += v
             return round(total / len(rssi_list), 2)
@@ -161,12 +179,6 @@ async def run_getting_packets(master=None):
         for d in devices:
             key_color = BeaconManager.find(str(d).rsplit(':', 1)[0])
             if key_color is not None:
-                # print('UUID:', d)
-                # print('address:', d.address)
-                # print('details:', d.details)
-                # print('metadata:', d.metadata)
-                # print('name:', d.name)
-                # print('rssi:', d.rssi)
                 if key_color == 'RED':
                     BeaconManager.insert_rssi('RED', d.rssi)
                     master.text1.insert(
@@ -205,9 +217,9 @@ async def run_getting_packets(master=None):
                     )    
                 not_exists_color.remove(key_color)
 
-        # ビーコンが近くに存在しなくなった時、履歴リストをリセットする
+        # ビーコンが受信できなかった際はカウント
         for key_color in not_exists_color:
-            BeaconManager.reset_rssi(key_color)
+            BeaconManager.increment_reset_count(key_color)
 
         # 最も近いビーコン色を表示
         beacon_dic = BeaconManager.get_nearest_beacon()
